@@ -1,0 +1,27 @@
+# Godot
+.godot/
+*.gdcache
+*.gd.bak
+*.tscn.bak
+*.tres.bak
+
+# Export builds
+# 注意: docs/ は GitHub Pages の公開元なので除外しない（ビルド成果物をコミットする）
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.env
+
+# Local development
+*.log
+tmp/
