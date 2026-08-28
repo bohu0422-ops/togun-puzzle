@@ -91,6 +91,7 @@ var next_letters = []      # 次に出てくるブロックの文字
 
 var touch_buttons = []    # [{"rect": Rect2, "action": String, "label": String}, ...]
 var truck_texture = preload("res://assets/togun_truck.jpg")
+var game_font = preload("res://assets/fonts/NotoSansJP.ttf")  # 日本語表示用（Godot内蔵フォントには日本語が無いため）
 
 
 func _ready():
@@ -353,22 +354,23 @@ func _draw():
 				_draw_cell(bx, by, letter, LETTER_COLORS[letter])
 
 	var info_x = BOARD_OFFSET_X + COLS * CELL_SIZE + 20
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 20), "スコア", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 40), "%d" % score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 70), "消去列数", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 90), "%d" % lines_cleared_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 22), "スコア", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 46), "%d" % score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 82), "消去列数", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 106), "%d" % lines_cleared_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
 
-	_draw_next_piece(info_x, BOARD_OFFSET_Y + 122)
+	_draw_next_piece(info_x, BOARD_OFFSET_Y + 148)
 
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 196), "操作方法", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 214), "←→ : 移動", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 230), "↑ : 回転", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 246), "↓ : ソフトドロップ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, BOARD_OFFSET_Y + 262), "SPACE : ハードドロップ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	# キーボード操作の説明（情報欄の幅に収まるよう短く表記）
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 250), "キー操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 272), "←→ 移動", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 292), "↑ 回転", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 312), "↓ 下へ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 332), "空白 落下", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
 
 	if game_over:
-		draw_string(ThemeDB.fallback_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2), "GAME OVER", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.2, 0.25))
-		draw_string(ThemeDB.fallback_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2 + 30), "Rキー/画面タップでリスタート", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2), "GAME OVER", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.2, 0.25))
+		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2 + 30), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
 
 	_draw_touch_buttons()
 
@@ -386,7 +388,7 @@ func _draw_header():
 			Vector2(x0 - HEADER_SLANT, HEADER_STRIPE_H),
 		])
 		draw_colored_polygon(pts, STRIPE_COLORS[i])
-	draw_string(ThemeDB.fallback_font, Vector2(16, HEADER_STRIPE_H + 24), "TOGUN Puzzle", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, DARK_TEXT)
+	draw_string(game_font, Vector2(16, HEADER_STRIPE_H + 24), "TOGUN Puzzle", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, DARK_TEXT)
 
 
 func _draw_bonus_overlay():
@@ -394,12 +396,12 @@ func _draw_bonus_overlay():
 
 	var msg = "TOGUN BONUS!"
 	var font_size = 30
-	var text_size = ThemeDB.fallback_font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-	draw_string(ThemeDB.fallback_font, Vector2((viewport_w - text_size.x) / 2.0, 110), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, LETTER_COLORS["N"])
+	var text_size = game_font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	draw_string(game_font, Vector2((viewport_w - text_size.x) / 2.0, 110), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, LETTER_COLORS["N"])
 
 	var sub = "+%d点 ボード全消し！" % TOGUN_BONUS_SCORE
-	var sub_size = ThemeDB.fallback_font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
-	draw_string(ThemeDB.fallback_font, Vector2((viewport_w - sub_size.x) / 2.0, 150), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, DARK_TEXT)
+	var sub_size = game_font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
+	draw_string(game_font, Vector2((viewport_w - sub_size.x) / 2.0, 150), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, DARK_TEXT)
 
 	var tex_w = 360.0
 	var tex_h = tex_w * float(truck_texture.get_height()) / float(truck_texture.get_width())
@@ -408,22 +410,22 @@ func _draw_bonus_overlay():
 	draw_texture_rect(truck_texture, Rect2(tx, ty, tex_w, tex_h), false)
 
 	var foot = "まもなく再開します…"
-	var foot_size = ThemeDB.fallback_font.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
-	draw_string(ThemeDB.fallback_font, Vector2((viewport_w - foot_size.x) / 2.0, ty + tex_h + 34), foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.5, 0.53, 0.58))
+	var foot_size = game_font.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+	draw_string(game_font, Vector2((viewport_w - foot_size.x) / 2.0, ty + tex_h + 34), foot, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.5, 0.53, 0.58))
 
 
 func _draw_next_piece(info_x: float, top_y: float):
-	draw_string(ThemeDB.fallback_font, Vector2(info_x, top_y), "つぎのブロック", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, top_y), "つぎのブロック", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, DARK_TEXT)
 
 	var cell = 18
-	var grid_y = top_y + 12
+	var grid_y = top_y + 24
 	for i in range(next_piece_cells.size()):
 		var c = next_piece_cells[i]
 		var letter = next_letters[i]
 		var x = info_x + c.x * cell
 		var y = grid_y + c.y * cell
 		draw_rect(Rect2(x, y, cell - 2, cell - 2), LETTER_COLORS[letter])
-		draw_string(ThemeDB.fallback_font, Vector2(x + 3, y + cell - 5), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1))
+		draw_string(game_font, Vector2(x + 3, y + cell - 5), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1))
 
 
 func _draw_touch_buttons():
@@ -433,14 +435,14 @@ func _draw_touch_buttons():
 		draw_rect(rect, BTN_BORDER, false, 1.5)
 		var label = btn["label"]
 		var font_size = 15
-		var text_size = ThemeDB.fallback_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var text_size = game_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 		var tx = rect.position.x + (rect.size.x - text_size.x) / 2.0
 		var ty = rect.position.y + rect.size.y / 2.0 + text_size.y / 4.0
-		draw_string(ThemeDB.fallback_font, Vector2(tx, ty), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, DARK_TEXT)
+		draw_string(game_font, Vector2(tx, ty), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, DARK_TEXT)
 
 
 func _draw_cell(col: int, row: int, letter: String, color: Color):
 	var x = BOARD_OFFSET_X + col * CELL_SIZE
 	var y = BOARD_OFFSET_Y + row * CELL_SIZE
 	draw_rect(Rect2(x, y, CELL_SIZE - 2, CELL_SIZE - 2), color)
-	draw_string(ThemeDB.fallback_font, Vector2(x + 8, y + 22), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1))
+	draw_string(game_font, Vector2(x + 8, y + 22), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1))

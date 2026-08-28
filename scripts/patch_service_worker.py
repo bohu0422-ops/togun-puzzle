@@ -8,14 +8,37 @@ self.skipWaiting() / self.clients.claim() の追記が失われる。
 使い方（プロジェクトルートで実行）:
     python scripts/patch_service_worker.py
 """
-import re
 import sys
 from pathlib import Path
 
 SW_PATH = Path(__file__).resolve().parent.parent / "docs" / "index.service.worker.js"
 
-INSTALL_MARK = "self.skipWaiting();"
-ACTIVATE_MARK = "self.clients.claim();"
+INSTALL_OLD = (
+    "self.addEventListener('install', (event) => {\n"
+    "\tevent.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));\n"
+    "});\n"
+)
+INSTALL_NEW = (
+    "self.addEventListener('install', (event) => {\n"
+    "\tevent.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));\n"
+    "\t// 新しいバージョンをすぐに有効化する（タブを閉じるまで待たない）\n"
+    "\tself.skipWaiting();\n"
+    "});\n"
+)
+
+ACTIVATE_OLD = (
+    "\t\treturn ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();\n"
+    "\t}));\n"
+    "});\n"
+)
+ACTIVATE_NEW = (
+    "\t\treturn ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();\n"
+    "\t}).then(function () {\n"
+    "\t\t// 開いているタブの制御もすぐに引き継ぐ\n"
+    "\t\treturn self.clients.claim();\n"
+    "\t}));\n"
+    "});\n"
+)
 
 
 def main():
@@ -24,30 +47,21 @@ def main():
         sys.exit(1)
 
     text = SW_PATH.read_text(encoding="utf-8")
+    already_patched = "self.skipWaiting();" in text.split("self.addEventListener('activate'")[0] \
+        and "self.clients.claim();" in text.split("self.addEventListener('activate'")[1].split("});")[0]
 
-    if INSTALL_MARK in text and ACTIVATE_MARK in text:
+    if already_patched:
         print("既にパッチ済みです。何もしません。")
         return
 
-    # install ハンドラの直前で addAll した直後に skipWaiting を追加
-    text, n1 = re.subn(
-        r"(self\.addEventListener\('install', \(event\) => \{\s*\n\s*event\.waitUntil\(caches\.open\(CACHE_NAME\)\.then\(\(cache\) => cache\.addAll\(CACHED_FILES\)\)\);\n)(\}\);)",
-        r"\1\t// 新しいバージョンをすぐに有効化する（タブを閉じるまで待たない）\n\tself.skipWaiting();\n\2",
-        text,
-        count=1,
-    )
-
-    # activate ハンドラの Promise チェーンの末尾に clients.claim() を追加
-    text, n2 = re.subn(
-        r"(return \('navigationPreload' in self\.registration\) \? self\.registration\.navigationPreload\.enable\(\) : Promise\.resolve\(\);\n\t\}\))(\)\);)",
-        r"\1.then(function () {\n\t\t// 開いているタブの制御もすぐに引き継ぐ\n\t\treturn self.clients.claim();\n\t})\2",
-        text,
-        count=1,
-    )
-
-    if n1 == 0 or n2 == 0:
-        print("警告: パターンが一致しませんでした（Godotのテンプレートが変わった可能性）。手動確認してください。")
+    if INSTALL_OLD not in text or ACTIVATE_OLD not in text:
+        print("警告: Godotのテンプレートが想定と異なります。手動でファイルを確認してください。")
+        print(f"  INSTALL_OLD 一致: {INSTALL_OLD in text}")
+        print(f"  ACTIVATE_OLD 一致: {ACTIVATE_OLD in text}")
         sys.exit(1)
+
+    text = text.replace(INSTALL_OLD, INSTALL_NEW, 1)
+    text = text.replace(ACTIVATE_OLD, ACTIVATE_NEW, 1)
 
     SW_PATH.write_text(text, encoding="utf-8")
     print(f"パッチ適用完了: {SW_PATH}")
