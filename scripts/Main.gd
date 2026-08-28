@@ -61,6 +61,9 @@ const TOGUN_SEQUENCE = "TOGUN"
 const TOGUN_BONUS_SCORE = 3000
 const BONUS_DISPLAY_SECONDS = 3.0
 
+# ハイスコアの保存先（Web版ではブラウザの保存領域に記録される）
+const HIGH_SCORE_PATH = "user://highscore.save"
+
 # 7種類のブロック形状（回転前の基準形）
 const SHAPES = {
 	"I": [Vector2i(0,1), Vector2i(1,1), Vector2i(2,1), Vector2i(3,1)],
@@ -83,6 +86,9 @@ var drop_timer = 0.0
 var drop_interval = 0.8
 var game_over = false
 
+var high_score = 0             # 端末に保存された最高得点
+var high_score_updated = false # 今回のプレイで記録を更新したか
+
 var bonus_active = false  # TOGUNボーナス演出中かどうか
 var bonus_timer = 0.0
 
@@ -96,10 +102,32 @@ var game_font = preload("res://assets/fonts/NotoSansJP.ttf")  # 日本語表示�
 
 func _ready():
 	randomize()
+	_load_high_score()
 	_init_board()
 	_roll_next_piece()
 	_spawn_piece()
 	_setup_touch_buttons()
+
+
+func _load_high_score():
+	# user:// はWeb版ではブラウザの保存領域（IndexedDB）に対応する
+	if not FileAccess.file_exists(HIGH_SCORE_PATH):
+		high_score = 0
+		return
+	var f = FileAccess.open(HIGH_SCORE_PATH, FileAccess.READ)
+	if f == null:
+		high_score = 0
+		return
+	high_score = int(f.get_line())
+	f.close()
+
+
+func _save_high_score():
+	var f = FileAccess.open(HIGH_SCORE_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_line(str(high_score))
+	f.close()
 
 
 func _roll_next_piece():
@@ -143,6 +171,10 @@ func _spawn_piece():
 
 	if _check_collision(current_piece, current_pos):
 		game_over = true
+		if score > high_score:
+			high_score = score
+			high_score_updated = true
+			_save_high_score()
 
 
 func _process(delta):
@@ -221,7 +253,9 @@ func _restart():
 	game_over = false
 	bonus_active = false
 	bonus_timer = 0.0
+	high_score_updated = false
 	_init_board()
+	_roll_next_piece()
 	_spawn_piece()
 
 
@@ -356,21 +390,28 @@ func _draw():
 	var info_x = BOARD_OFFSET_X + COLS * CELL_SIZE + 20
 	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 22), "スコア", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
 	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 46), "%d" % score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 82), "消去列数", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 106), "%d" % lines_cleared_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 78), "ハイスコア", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 102), "%d" % high_score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 134), "消去列数", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 158), "%d" % lines_cleared_total, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
 
-	_draw_next_piece(info_x, BOARD_OFFSET_Y + 148)
+	_draw_next_piece(info_x, BOARD_OFFSET_Y + 196)
 
 	# キーボード操作の説明（情報欄の幅に収まるよう短く表記）
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 250), "キー操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 272), "←→ 移動", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 292), "↑ 回転", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 312), "↓ 下へ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
-	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 332), "空白 落下", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 298), "キー操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 320), "←→ 移動", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 340), "↑ 回転", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 360), "↓ 下へ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
+	draw_string(game_font, Vector2(info_x, BOARD_OFFSET_Y + 380), "空白 落下", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
 
 	if game_over:
-		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2), "GAME OVER", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.2, 0.25))
-		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2 + 30), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+		var go_y = BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2
+		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y), "GAME OVER", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.2, 0.25))
+		if high_score_updated:
+			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 30), "ハイスコア更新！", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, LETTER_COLORS["G"])
+			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 58), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+		else:
+			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 30), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
 
 	_draw_touch_buttons()
 

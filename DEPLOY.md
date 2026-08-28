@@ -54,6 +54,21 @@ git push -u origin main
 
 ## ステップ4：Godot で HTML5 エクスポート
 
+### 事前：日本語の文言を変更した場合のみ
+
+`scripts/Main.gd` の中の日本語（画面に出るラベルやメッセージ）を
+追加・変更したときは、**エクスポートの前に**次を実行します。
+
+```bash
+python scripts/rebuild_font_subset.py
+```
+
+同梱している日本語フォントは、容量削減のため「実際に使う文字」だけに
+絞り込んであります。これを忘れると、新しく足した文字だけが
+豆腐（□）で表示されます。
+
+### エクスポート本体
+
 1. Godot で `Project` > `Export` を開く
 2. **Web** を選択（すでに設定済み）
 3. **Export Path**: `docs/index.html` を指定
