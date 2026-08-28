@@ -22,6 +22,8 @@ const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 self.addEventListener('install', (event) => {
 	event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));
+	// 新しいバージョンをすぐに有効化する（タブを閉じるまで待たない）
+	self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -33,6 +35,9 @@ self.addEventListener('activate', (event) => {
 	).then(function () {
 		// Enable navigation preload if available.
 		return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();
+	}).then(function () {
+		// 開いているタブの制御もすぐに引き継ぐ
+		return self.clients.claim();
 	}));
 });
 

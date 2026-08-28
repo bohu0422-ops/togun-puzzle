@@ -64,6 +64,18 @@ git push -u origin main
 - `index.js` ← ゲームロジック
 - `index.pck` ← ゲームデータ
 - `index.wasm` ← WebAssembly（ゲーム実行エンジン）
+- `index.service.worker.js` ← オフラインキャッシュ（Service Worker）
+
+**エクスポートのたびに、必ず次のパッチスクリプトを実行してください。**
+Godotが生成する Service Worker は、新しいバージョンを配信しても
+古いタブがそれを開いたまま「切り替わらない」ことがあります
+（更新したのにブラウザ・スマホで古い画面のまま、という現象の原因）。
+このスクリプトは `self.skipWaiting()` / `self.clients.claim()` を
+差し込んで、新バージョンがすぐに反映されるようにします。
+
+```bash
+python scripts/patch_service_worker.py
+```
 
 ---
 
