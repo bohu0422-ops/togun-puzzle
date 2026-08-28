@@ -86,6 +86,8 @@ var drop_timer = 0.0
 var drop_interval = 0.8
 var game_over = false
 
+var title_active = true  # タイトル画面を表示中かどうか
+
 var high_score = 0             # 端末に保存された最高得点
 var high_score_updated = false # 今回のプレイで記録を更新したか
 
@@ -178,6 +180,10 @@ func _spawn_piece():
 
 
 func _process(delta):
+	if title_active:
+		queue_redraw()
+		return
+
 	if game_over:
 		queue_redraw()
 		return
@@ -199,6 +205,11 @@ func _process(delta):
 
 
 func _input(event):
+	if title_active:
+		if (event is InputEventScreenTouch and event.pressed) or (event is InputEventKey and event.pressed):
+			title_active = false
+		return
+
 	if bonus_active:
 		return
 
@@ -361,6 +372,11 @@ func _check_lines():
 
 func _draw():
 	draw_rect(Rect2(0, 0, get_viewport_rect().size.x, get_viewport_rect().size.y), BG_COLOR, true)
+
+	if title_active:
+		_draw_title_screen()
+		return
+
 	_draw_header()
 
 	if bonus_active:
@@ -416,20 +432,88 @@ func _draw():
 	_draw_touch_buttons()
 
 
-func _draw_header():
+func _draw_stripe_band(y0: float):
 	var viewport_w = get_viewport_rect().size.x
 	var n = STRIPE_COLORS.size()
 	var band_w = viewport_w / float(n)
 	for i in range(n):
 		var x0 = i * band_w
 		var pts = PackedVector2Array([
-			Vector2(x0 + HEADER_SLANT, 0),
-			Vector2(x0 + band_w + HEADER_SLANT, 0),
-			Vector2(x0 + band_w - HEADER_SLANT, HEADER_STRIPE_H),
-			Vector2(x0 - HEADER_SLANT, HEADER_STRIPE_H),
+			Vector2(x0 + HEADER_SLANT, y0),
+			Vector2(x0 + band_w + HEADER_SLANT, y0),
+			Vector2(x0 + band_w - HEADER_SLANT, y0 + HEADER_STRIPE_H),
+			Vector2(x0 - HEADER_SLANT, y0 + HEADER_STRIPE_H),
 		])
 		draw_colored_polygon(pts, STRIPE_COLORS[i])
+
+
+func _draw_header():
+	_draw_stripe_band(0)
 	draw_string(game_font, Vector2(16, HEADER_STRIPE_H + 24), "TOGUN Puzzle", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, DARK_TEXT)
+
+
+func _draw_title_tile(x: float, y: float, size: float, letter: String):
+	draw_rect(Rect2(x, y, size, size), LETTER_COLORS[letter], true)
+	var font_size = int(size * 0.5)
+	var ts = game_font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	draw_string(game_font, Vector2(x + (size - ts.x) / 2.0, y + size / 2.0 + ts.y / 3.0), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1))
+
+
+func _draw_title_screen():
+	var viewport_w = get_viewport_rect().size.x
+	var viewport_h = get_viewport_rect().size.y
+
+	_draw_stripe_band(0)
+
+	# ロゴ：TO / GUN の2段タイル
+	var s = 48.0
+	var gap = 8.0
+	var y1 = 70.0
+	var x1 = (viewport_w - (2 * s + gap)) / 2.0
+	for i in range(2):
+		_draw_title_tile(x1 + i * (s + gap), y1, s, "TO"[i])
+	var y2 = y1 + s + gap
+	var x2 = (viewport_w - (3 * s + 2 * gap)) / 2.0
+	for i in range(3):
+		_draw_title_tile(x2 + i * (s + gap), y2, s, "GUN"[i])
+	var logo_bottom = y2 + s
+
+	var puzzle_text = "Puzzle"
+	var pts = game_font.get_string_size(puzzle_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26)
+	draw_string(game_font, Vector2((viewport_w - pts.x) / 2.0, logo_bottom + 40), puzzle_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, DARK_TEXT)
+
+	# トラックのイラスト
+	var truck_w = 250.0
+	var truck_h = truck_w * float(truck_texture.get_height()) / float(truck_texture.get_width())
+	var truck_x = (viewport_w - truck_w) / 2.0
+	var truck_y = logo_bottom + 56.0
+	draw_texture_rect(truck_texture, Rect2(truck_x, truck_y, truck_w, truck_h), false)
+
+	# あそびかたカード
+	var card_y = truck_y + truck_h + 14.0
+	var card_h = 150.0
+	var card_rect = Rect2(30, card_y, viewport_w - 60, card_h)
+	draw_rect(card_rect, Color(0.965, 0.973, 0.984), true)
+	draw_rect(card_rect, Color(0.847, 0.871, 0.902), false, 2.0)
+	draw_string(game_font, Vector2(50, card_y + 26), "あそびかた", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DARK_TEXT)
+	var rule_lines = [
+		"・横1列そろえると消えて得点",
+		"・消えた列が TOGUN の並びなら",
+		"　特大ボーナス＋全消し！",
+		"・下のボタンで操作します",
+	]
+	for i in range(rule_lines.size()):
+		draw_string(game_font, Vector2(50, card_y + 50 + i * 26), rule_lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.27, 0.31, 0.37))
+
+	var start_text = "タップしてスタート"
+	var sts = game_font.get_string_size(start_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
+	draw_string(game_font, Vector2((viewport_w - sts.x) / 2.0, card_y + card_h + 38), start_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, DARK_TEXT)
+
+	var hs_text = "ハイスコア  %d" % high_score
+	var hts = game_font.get_string_size(hs_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+	draw_string(game_font, Vector2((viewport_w - hts.x) / 2.0, card_y + card_h + 64), hs_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.5, 0.53, 0.58))
+
+	_draw_stripe_band(viewport_h - HEADER_STRIPE_H)
 
 
 func _draw_bonus_overlay():

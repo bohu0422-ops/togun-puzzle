@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1787927039|21514754';
+const CACHE_VERSION = '1787927998|15659840';
 /** @type {string} */
 const CACHE_PREFIX = 'TOGUN Puzzle-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
