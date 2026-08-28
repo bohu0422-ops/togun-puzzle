@@ -75,6 +75,16 @@ const SHAPES = {
 	"L": [Vector2i(2,0), Vector2i(0,1), Vector2i(1,1), Vector2i(2,1)],
 }
 
+# 回転時の壁蹴りオフセット（この順に試し、置ける位置が見つかったら採用する）
+const WALL_KICK_OFFSETS = [
+	Vector2i(0, 0),
+	Vector2i(-1, 0),
+	Vector2i(1, 0),
+	Vector2i(-2, 0),
+	Vector2i(2, 0),
+	Vector2i(0, -1),
+]
+
 var board = []            # board[行][列] = {"letter": "T"} または null（空マス）
 var current_piece = []    # 現在落下中のブロックの各マス座標（相対位置）
 var current_letters = []  # 各マスに割り当てられた文字
@@ -287,12 +297,19 @@ func _hard_drop():
 
 
 func _rotate_piece():
-	# 4x4の枠内での簡易90度回転（プロトタイプ用のシンプル実装）
+	# 4x4の枠内での90度回転＋壁蹴り。
+	# そのままの位置で置けなければ、左右にずらした位置でも試す
+	# （盤面の端でブロックが回転できなくなるのを防ぐ）
 	var rotated = []
 	for cell in current_piece:
 		rotated.append(Vector2i(3 - cell.y, cell.x))
-	if not _check_collision(rotated, current_pos):
-		current_piece = rotated
+
+	for offset in WALL_KICK_OFFSETS:
+		var new_pos = current_pos + offset
+		if not _check_collision(rotated, new_pos):
+			current_piece = rotated
+			current_pos = new_pos
+			return
 
 
 func _check_collision(piece, pos: Vector2i) -> bool:
