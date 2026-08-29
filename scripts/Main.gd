@@ -320,6 +320,8 @@ func _input(event):
 		if game_over:
 			if event.keycode == KEY_R:
 				_restart()
+			elif event.keycode == KEY_T:
+				_go_to_title()
 			return
 		match event.keycode:
 			KEY_LEFT:
@@ -342,7 +344,11 @@ func _toggle_pause():
 
 func _handle_touch(pos: Vector2):
 	if game_over:
-		_restart()
+		var rects = _game_over_button_rects()
+		if rects[0].has_point(pos):
+			_restart()
+		elif rects[1].has_point(pos):
+			_go_to_title()
 		return
 
 	if not bonus_active and pause_button_rect.has_point(pos):
@@ -412,7 +418,38 @@ func _restart():
 	_spawn_piece()
 	if bgm_player != null:
 		bgm_player.stream_paused = false
+		bgm_player.volume_db = GAMEPLAY_BGM_VOLUME_DB
 		bgm_player.play()
+
+
+func _go_to_title():
+	# ゲームオーバーからタイトル画面に戻る（接続後2回目以降のタイトル表示）
+	score = 0
+	lines_cleared_total = 0
+	drop_interval = 0.8
+	game_over = false
+	bonus_active = false
+	bonus_timer = 0.0
+	paused = false
+	high_score_updated = false
+	_init_board()
+	_roll_next_piece()
+	_spawn_piece()
+	title_active = true
+	if bgm_player != null:
+		bgm_player.stream_paused = false
+		bgm_player.volume_db = TITLE_BGM_VOLUME_DB
+		bgm_player.play()
+
+
+func _game_over_button_rects() -> Array:
+	var go_y = BOARD_OFFSET_Y + ROWS * CELL_SIZE / 2
+	var btn_y = go_y + (55 if high_score_updated else 30)
+	var btn_w = 110
+	var btn_h = 34
+	var retry_rect = Rect2(BOARD_OFFSET_X + 10, btn_y, btn_w, btn_h)
+	var title_rect = Rect2(BOARD_OFFSET_X + 10 + btn_w + 12, btn_y, btn_w, btn_h)
+	return [retry_rect, title_rect]
 
 
 func _move_piece(delta: Vector2i) -> bool:
@@ -753,9 +790,10 @@ func _draw():
 		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y), "GAME OVER", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.2, 0.25))
 		if high_score_updated:
 			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 30), "ハイスコア更新！", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, LETTER_COLORS["G"])
-			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 58), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
-		else:
-			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 30), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
+		var go_rects = _game_over_button_rects()
+		_draw_game_over_button(go_rects[0], "もう一度")
+		_draw_game_over_button(go_rects[1], "タイトルへ")
+		draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_rects[0].position.y + go_rects[0].size.y + 20), "Rキー：再開　Tキー：タイトル", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DARK_TEXT)
 
 	_draw_pause_button()
 
@@ -765,6 +803,14 @@ func _draw():
 
 	_draw_rearrange_controls()
 	_draw_touch_buttons()
+
+
+func _draw_game_over_button(rect: Rect2, label: String):
+	draw_rect(rect, BTN_BG, true)
+	draw_rect(rect, BTN_BORDER, false, 1.5)
+	var fs = 14
+	var ts = game_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	draw_string(game_font, Vector2(rect.position.x + (rect.size.x - ts.x) / 2.0, rect.position.y + rect.size.y / 2.0 + ts.y / 3.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DARK_TEXT)
 
 
 func _draw_pause_button():
