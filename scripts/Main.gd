@@ -63,6 +63,8 @@ const BONUS_DISPLAY_SECONDS = 3.0
 
 # ハイスコアの保存先（Web版ではブラウザの保存領域に記録される）
 const HIGH_SCORE_PATH = "user://highscore.save"
+# タップボタンの並び順の保存先
+const BUTTON_ORDER_PATH = "user://buttonorder.save"
 
 # 7種類のブロック形状（回転前の基準形）
 const SHAPES = {
@@ -86,10 +88,8 @@ const WALL_KICK_OFFSETS = [
 ]
 
 # =====================================================
-#  効果音・BGM（音声ファイルを使わず、コードで波形を生成する）
-#  BGMは「山の魔王の宮殿にて」（グリーグ、パブリックドメイン）の
-#  上昇して下降する音型・テンポアップしていく構成を、
-#  短調ではなく長調にアレンジして明るくポップな8bit風にしたもの。
+#  効果音（音声ファイルを使わず、コードで波形を生成する）
+#  BGM本体は実際のオーケストラ録音（assets/audio/）を使用
 # =====================================================
 const AUDIO_MIX_RATE = 22050
 const C4_FREQ = 261.63
@@ -120,10 +120,19 @@ var high_score_updated = false # 今回のプレイで記録を更新したか
 var bonus_active = false  # TOGUNボーナス演出中かどうか
 var bonus_timer = 0.0
 
+var paused = false  # 一時停止中かどうか
+
 var next_piece_cells = []  # 次に出てくるブロックの形（プレビュー表示用）
 var next_letters = []      # 次に出てくるブロックの文字
 
+var button_order = [0, 1, 2, 3, 4]  # TOUCH_BUTTON_DEFSの並び順（インデックス）
+var rearrange_mode = false          # ボタンの並び替えモード中かどうか
+var rearrange_selected = -1         # 並び替え中に選択済みのボタン位置（-1で未選択）
+
 var touch_buttons = []    # [{"rect": Rect2, "action": String, "label": String}, ...]
+var pause_button_rect = Rect2()
+var rearrange_button_rect = Rect2()
+var rearrange_reset_rect = Rect2()
 var truck_texture = preload("res://assets/togun_truck.jpg")
 var game_font = preload("res://assets/fonts/NotoSansJP.ttf")  # 日本語表示用（Godot内蔵フォントには日本語が無いため）
 
@@ -139,6 +148,7 @@ var sfx_gameover
 func _ready():
 	randomize()
 	_load_high_score()
+	_load_button_order()
 	_init_board()
 	_roll_next_piece()
 	_spawn_piece()
@@ -167,6 +177,43 @@ func _save_high_score():
 	f.close()
 
 
+func _load_button_order():
+	if not FileAccess.file_exists(BUTTON_ORDER_PATH):
+		return
+	var f = FileAccess.open(BUTTON_ORDER_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var line = f.get_line()
+	f.close()
+	var parts = line.split(",")
+	if parts.size() != TOUCH_BUTTON_DEFS.size():
+		return
+	var order = []
+	for p in parts:
+		if not p.is_valid_int():
+			return
+		order.append(int(p))
+	order.sort()
+	for i in range(order.size()):
+		if order[i] != i:
+			return  # 0..4が過不足なく揃っていない場合は不正なデータとして無視
+	var parsed = []
+	for p in parts:
+		parsed.append(int(p))
+	button_order = parsed
+
+
+func _save_button_order():
+	var f = FileAccess.open(BUTTON_ORDER_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	var strs = []
+	for i in button_order:
+		strs.append(str(i))
+	f.store_line(",".join(strs))
+	f.close()
+
+
 func _roll_next_piece():
 	var keys = SHAPES.keys()
 	var chosen_type = keys[randi() % keys.size()]
@@ -184,10 +231,16 @@ func _setup_touch_buttons():
 	var total_w = viewport_w - TOUCH_BTN_MARGIN * 2 - TOUCH_BTN_GAP * (count - 1)
 	var btn_w = total_w / count
 	var x = TOUCH_BTN_MARGIN
-	for d in TOUCH_BUTTON_DEFS:
+	for idx in button_order:
+		var d = TOUCH_BUTTON_DEFS[idx]
 		var rect = Rect2(x, TOUCH_BTN_Y, btn_w, TOUCH_BTN_H)
-		touch_buttons.append({"rect": rect, "action": d["action"], "label": d["label"]})
+		touch_buttons.append({"rect": rect, "action": d["action"], "label": d["label"], "def_index": idx})
 		x += btn_w + TOUCH_BTN_GAP
+
+	var info_x = BOARD_OFFSET_X + COLS * CELL_SIZE + 20
+	pause_button_rect = Rect2(viewport_w - 40, HEADER_STRIPE_H + 6, 28, 28)
+	rearrange_button_rect = Rect2(info_x, BOARD_OFFSET_Y + 400, 100, 26)
+	rearrange_reset_rect = Rect2(info_x, BOARD_OFFSET_Y + 432, 100, 26)
 
 
 func _init_board():
@@ -226,6 +279,10 @@ func _process(delta):
 		queue_redraw()
 		return
 
+	if paused:
+		queue_redraw()
+		return
+
 	if bonus_active:
 		bonus_timer -= delta
 		if bonus_timer <= 0.0:
@@ -250,19 +307,20 @@ func _input(event):
 				bgm_player.volume_db = GAMEPLAY_BGM_VOLUME_DB
 		return
 
-	if bonus_active:
-		return
-
 	if event is InputEventScreenTouch and event.pressed:
 		_handle_touch(event.position)
 		return
 
-	if game_over:
-		if event is InputEventKey and event.pressed and event.keycode == KEY_R:
-			_restart()
-		return
-
 	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_P and not bonus_active and not game_over:
+			_toggle_pause()
+			return
+		if paused or bonus_active:
+			return
+		if game_over:
+			if event.keycode == KEY_R:
+				_restart()
+			return
 		match event.keycode:
 			KEY_LEFT:
 				_move_piece(Vector2i(-1, 0))
@@ -276,25 +334,68 @@ func _input(event):
 				_hard_drop()
 
 
+func _toggle_pause():
+	paused = not paused
+	if bgm_player != null:
+		bgm_player.stream_paused = paused
+
+
 func _handle_touch(pos: Vector2):
 	if game_over:
 		_restart()
 		return
 
-	for btn in touch_buttons:
+	if not bonus_active and pause_button_rect.has_point(pos):
+		_toggle_pause()
+		return
+
+	if paused or bonus_active:
+		return
+
+	if rearrange_button_rect.has_point(pos):
+		rearrange_mode = not rearrange_mode
+		rearrange_selected = -1
+		return
+
+	if rearrange_mode and rearrange_reset_rect.has_point(pos):
+		button_order = [0, 1, 2, 3, 4]
+		_save_button_order()
+		_setup_touch_buttons()
+		rearrange_selected = -1
+		return
+
+	for i in range(touch_buttons.size()):
+		var btn = touch_buttons[i]
 		if btn["rect"].has_point(pos):
-			match btn["action"]:
-				"left":
-					_move_piece(Vector2i(-1, 0))
-				"right":
-					_move_piece(Vector2i(1, 0))
-				"rotate":
-					_rotate_piece()
-				"soft_drop":
-					_move_piece(Vector2i(0, 1))
-				"hard_drop":
-					_hard_drop()
+			if rearrange_mode:
+				_handle_rearrange_tap(i)
+			else:
+				match btn["action"]:
+					"left":
+						_move_piece(Vector2i(-1, 0))
+					"right":
+						_move_piece(Vector2i(1, 0))
+					"rotate":
+						_rotate_piece()
+					"soft_drop":
+						_move_piece(Vector2i(0, 1))
+					"hard_drop":
+						_hard_drop()
 			return
+
+
+func _handle_rearrange_tap(index: int):
+	if rearrange_selected == -1:
+		rearrange_selected = index
+	elif rearrange_selected == index:
+		rearrange_selected = -1
+	else:
+		var tmp = button_order[rearrange_selected]
+		button_order[rearrange_selected] = button_order[index]
+		button_order[index] = tmp
+		_save_button_order()
+		_setup_touch_buttons()
+		rearrange_selected = -1
 
 
 func _restart():
@@ -304,11 +405,13 @@ func _restart():
 	game_over = false
 	bonus_active = false
 	bonus_timer = 0.0
+	paused = false
 	high_score_updated = false
 	_init_board()
 	_roll_next_piece()
 	_spawn_piece()
 	if bgm_player != null:
+		bgm_player.stream_paused = false
 		bgm_player.play()
 
 
@@ -654,7 +757,57 @@ func _draw():
 		else:
 			draw_string(game_font, Vector2(BOARD_OFFSET_X + 10, go_y + 30), "Rキーか画面タップで再開", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, DARK_TEXT)
 
+	_draw_pause_button()
+
+	if paused:
+		_draw_pause_overlay()
+		return
+
+	_draw_rearrange_controls()
 	_draw_touch_buttons()
+
+
+func _draw_pause_button():
+	var r = pause_button_rect
+	draw_rect(r, BTN_BG, true)
+	draw_rect(r, BTN_BORDER, false, 1.5)
+	var label = ">" if paused else "||"
+	var fs = 14
+	var ts = game_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	draw_string(game_font, Vector2(r.position.x + (r.size.x - ts.x) / 2.0, r.position.y + r.size.y / 2.0 + ts.y / 3.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DARK_TEXT)
+
+
+func _draw_pause_overlay():
+	var viewport_w = get_viewport_rect().size.x
+	var viewport_h = get_viewport_rect().size.y
+	draw_rect(Rect2(0, 0, viewport_w, viewport_h), Color(1, 1, 1, 0.75), true)
+
+	var title = "一時停止中"
+	var ts = game_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 28)
+	draw_string(game_font, Vector2((viewport_w - ts.x) / 2.0, viewport_h / 2.0 - 10), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, DARK_TEXT)
+
+	var hint = "右上のボタンをタップして再開"
+	var hs = game_font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
+	draw_string(game_font, Vector2((viewport_w - hs.x) / 2.0, viewport_h / 2.0 + 22), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.4, 0.44, 0.5))
+
+
+func _draw_rearrange_controls():
+	var r = rearrange_button_rect
+	draw_rect(r, LETTER_COLORS["T"] if rearrange_mode else BTN_BG, true)
+	draw_rect(r, BTN_BORDER, false, 1.5)
+	var label = "並び替え中" if rearrange_mode else "並び替え"
+	var fs = 12
+	var ts = game_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+	var color = Color(1, 1, 1) if rearrange_mode else DARK_TEXT
+	draw_string(game_font, Vector2(r.position.x + (r.size.x - ts.x) / 2.0, r.position.y + r.size.y / 2.0 + ts.y / 3.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, color)
+
+	if rearrange_mode:
+		var rr = rearrange_reset_rect
+		draw_rect(rr, BTN_BG, true)
+		draw_rect(rr, BTN_BORDER, false, 1.5)
+		var rlabel = "元に戻す"
+		var rts = game_font.get_string_size(rlabel, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		draw_string(game_font, Vector2(rr.position.x + (rr.size.x - rts.x) / 2.0, rr.position.y + rr.size.y / 2.0 + rts.y / 3.0), rlabel, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DARK_TEXT)
 
 
 func _draw_stripe_band(y0: float):
@@ -779,16 +932,19 @@ func _draw_next_piece(info_x: float, top_y: float):
 
 
 func _draw_touch_buttons():
-	for btn in touch_buttons:
+	for i in range(touch_buttons.size()):
+		var btn = touch_buttons[i]
 		var rect = btn["rect"]
-		draw_rect(rect, BTN_BG, true)
-		draw_rect(rect, BTN_BORDER, false, 1.5)
+		var is_selected = rearrange_mode and rearrange_selected == i
+		draw_rect(rect, LETTER_COLORS["T"] if is_selected else BTN_BG, true)
+		draw_rect(rect, LETTER_COLORS["N"] if rearrange_mode else BTN_BORDER, false, 1.5 if not rearrange_mode else 2.5)
 		var label = btn["label"]
 		var font_size = 15
 		var text_size = game_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 		var tx = rect.position.x + (rect.size.x - text_size.x) / 2.0
 		var ty = rect.position.y + rect.size.y / 2.0 + text_size.y / 4.0
-		draw_string(game_font, Vector2(tx, ty), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, DARK_TEXT)
+		var text_color = Color(1, 1, 1) if is_selected else DARK_TEXT
+		draw_string(game_font, Vector2(tx, ty), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
 
 
 func _draw_cell(col: int, row: int, letter: String, color: Color):

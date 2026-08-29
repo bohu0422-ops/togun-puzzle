@@ -25,6 +25,10 @@ window/size/viewport_width=480
 window/size/viewport_height=760
 window/stretch/mode="canvas_items"
 
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
