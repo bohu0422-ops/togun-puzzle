@@ -85,6 +85,22 @@ const WALL_KICK_OFFSETS = [
 	Vector2i(0, -1),
 ]
 
+# =====================================================
+#  効果音・BGM（音声ファイルを使わず、コードで波形を生成する）
+#  BGMは「山の魔王の宮殿にて」（グリーグ、パブリックドメイン）の
+#  上昇して下降する音型・テンポアップしていく構成を、
+#  短調ではなく長調にアレンジして明るくポップな8bit風にしたもの。
+# =====================================================
+const AUDIO_MIX_RATE = 22050
+const C4_FREQ = 261.63
+const MAJOR_SCALE_SEMITONES = [0, 2, 4, 5, 7, 9, 11]  # 1=ド 2=レ 3=ミ 4=ファ 5=ソ 6=ラ 7=シ
+
+const SFX_POOL_SIZE = 3
+
+# BGM音量（タイトル画面は控えめ、ゲーム開始で少し上げる。同じ曲を鳴らし続けるので継ぎ目なし）
+const TITLE_BGM_VOLUME_DB = -16.0
+const GAMEPLAY_BGM_VOLUME_DB = -4.0
+
 var board = []            # board[行][列] = {"letter": "T"} または null（空マス）
 var current_piece = []    # 現在落下中のブロックの各マス座標（相対位置）
 var current_letters = []  # 各マスに割り当てられた文字
@@ -111,6 +127,14 @@ var touch_buttons = []    # [{"rect": Rect2, "action": String, "label": String},
 var truck_texture = preload("res://assets/togun_truck.jpg")
 var game_font = preload("res://assets/fonts/NotoSansJP.ttf")  # 日本語表示用（Godot内蔵フォントには日本語が無いため）
 
+var bgm_player: AudioStreamPlayer
+var sfx_pool = []
+var sfx_pool_index = 0
+var sfx_landing
+var sfx_line_clear
+var sfx_bonus
+var sfx_gameover
+
 
 func _ready():
 	randomize()
@@ -119,6 +143,7 @@ func _ready():
 	_roll_next_piece()
 	_spawn_piece()
 	_setup_touch_buttons()
+	_setup_audio()
 
 
 func _load_high_score():
@@ -183,6 +208,9 @@ func _spawn_piece():
 
 	if _check_collision(current_piece, current_pos):
 		game_over = true
+		if bgm_player != null:
+			bgm_player.stop()
+		_play_sfx(sfx_gameover)
 		if score > high_score:
 			high_score = score
 			high_score_updated = true
@@ -218,6 +246,8 @@ func _input(event):
 	if title_active:
 		if (event is InputEventScreenTouch and event.pressed) or (event is InputEventKey and event.pressed):
 			title_active = false
+			if bgm_player != null:
+				bgm_player.volume_db = GAMEPLAY_BGM_VOLUME_DB
 		return
 
 	if bonus_active:
@@ -278,6 +308,8 @@ func _restart():
 	_init_board()
 	_roll_next_piece()
 	_spawn_piece()
+	if bgm_player != null:
+		bgm_player.play()
 
 
 func _move_piece(delta: Vector2i) -> bool:
@@ -331,6 +363,7 @@ func _lock_piece():
 		if by >= 0 and by < ROWS and bx >= 0 and bx < COLS:
 			board[by][bx] = {"letter": current_letters[i]}
 
+	_play_sfx(sfx_landing)
 	_check_lines()
 	if not bonus_active:
 		_spawn_piece()
@@ -373,7 +406,10 @@ func _check_lines():
 		_init_board()
 		bonus_active = true
 		bonus_timer = BONUS_DISPLAY_SECONDS
+		_play_sfx(sfx_bonus)
 		return
+
+	_play_sfx(sfx_line_clear)
 
 	rows_to_clear.sort()
 	for r in rows_to_clear:
@@ -385,6 +421,178 @@ func _check_lines():
 
 	# 10列消すごとに落下速度を少し上げる（最速0.15秒まで）
 	drop_interval = max(0.15, 0.8 - float(lines_cleared_total / 10) * 0.1)
+
+
+# ---- ここから効果音・BGM ----
+
+func _setup_audio():
+	bgm_player = AudioStreamPlayer.new()
+	add_child(bgm_player)
+	# 実際のオーケストラ録音（YouTubeオーディオライブラリ、帰属表示不要）を使用。
+	# タイトル画面では静かに、ゲーム開始で音量を上げる（同じ曲を鳴らし続けるので継ぎ目なし）
+	var real_bgm = load("res://assets/audio/carmen_toreadors.mp3")
+	real_bgm.loop = true
+	bgm_player.stream = real_bgm
+	bgm_player.volume_db = TITLE_BGM_VOLUME_DB
+	bgm_player.play()
+
+	for i in range(SFX_POOL_SIZE):
+		var p = AudioStreamPlayer.new()
+		add_child(p)
+		sfx_pool.append(p)
+
+	sfx_landing = _generate_landing_sfx()
+	sfx_line_clear = _generate_line_clear_sfx()
+	sfx_bonus = _generate_bonus_sfx()
+	sfx_gameover = _generate_gameover_sfx()
+
+
+func _play_sfx(stream):
+	if stream == null or sfx_pool.is_empty():
+		return
+	var player = sfx_pool[sfx_pool_index]
+	sfx_pool_index = (sfx_pool_index + 1) % sfx_pool.size()
+	player.stream = stream
+	player.play()
+
+
+func _semitone_freq(base_freq: float, semitones: float) -> float:
+	return base_freq * pow(2.0, semitones / 12.0)
+
+
+func _degree_freq(degree: int, octave_shift: int) -> float:
+	# degree: 1〜6（ド〜ラ）。オクターブ違いは octave_shift（+1で1オクターブ上）
+	var semis = MAJOR_SCALE_SEMITONES[degree - 1] + octave_shift * 12
+	return _semitone_freq(C4_FREQ, semis)
+
+
+func _mix_tone(buf: PackedFloat32Array, start_sample: int, freq: float, duration_sec: float, volume: float, waveform: String, duty: float = 0.5):
+	var n = int(duration_sec * AUDIO_MIX_RATE)
+	var fade = min(0.006 * AUDIO_MIX_RATE, n / 4.0)
+	for i in range(n):
+		var idx = start_sample + i
+		if idx < 0 or idx >= buf.size():
+			continue
+		var t = float(i) / AUDIO_MIX_RATE
+		var phase = fmod(t * freq, 1.0)
+		var raw = 0.0
+		if waveform == "square":
+			raw = 1.0 if phase < duty else -1.0
+		else:  # "triangle"
+			raw = 4.0 * abs(phase - 0.5) - 1.0
+		var env = 1.0
+		if fade > 0.0:
+			if i < fade:
+				env = i / fade
+			elif i > n - fade:
+				env = (n - i) / fade
+		buf[idx] += raw * volume * env
+
+
+func _scale_degree_freq(degree_from_1: int, octave_shift: int) -> float:
+	# 1以上の任意の度数を受け取り、6音スケールを折り返しながら周波数を返す
+	# （例：度数8 → 1オクターブ上の度数2）。ハモリ音の計算に使う
+	var size = MAJOR_SCALE_SEMITONES.size()
+	var idx = (degree_from_1 - 1) % size
+	var extra_octaves = int((degree_from_1 - 1) / float(size))
+	return _degree_freq(idx + 1, octave_shift + extra_octaves)
+
+
+func _float_buffer_to_pcm16(buf: PackedFloat32Array) -> PackedByteArray:
+	var bytes = PackedByteArray()
+	bytes.resize(buf.size() * 2)
+	for i in range(buf.size()):
+		var v = clamp(buf[i], -1.0, 1.0)
+		var s = int(v * 32767.0)
+		bytes[i * 2] = s & 0xFF
+		bytes[i * 2 + 1] = (s >> 8) & 0xFF
+	return bytes
+
+
+func _make_wav(buf: PackedFloat32Array, loop: bool) -> AudioStreamWAV:
+	var stream = AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = AUDIO_MIX_RATE
+	stream.stereo = false
+	stream.data = _float_buffer_to_pcm16(buf)
+	if loop:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		stream.loop_begin = 0
+		stream.loop_end = buf.size()
+	return stream
+
+
+func _generate_landing_sfx() -> AudioStreamWAV:
+	# ブロック着地音：短く低めの「ポン」
+	var notes = [{"freq": 440.0, "dur": 0.05}, {"freq": 300.0, "dur": 0.06}]
+	return _build_note_sequence(notes, "square", 0.22)
+
+
+func _generate_line_clear_sfx() -> AudioStreamWAV:
+	# 列消去音：明るく駆け上がる「ピロン」
+	var degrees = [3, 5, 6, 8]
+	var notes = []
+	for d in degrees:
+		notes.append({"freq": _scale_degree_freq(d, 1), "dur": 0.06})
+	return _build_note_sequence(notes, "square", 0.24)
+
+
+func _generate_bonus_sfx() -> AudioStreamWAV:
+	# TOGUNボーナス音：華やかに駆け上がって和音で締める
+	var run_degrees = [1, 3, 5, 8, 10]
+	var notes = []
+	for d in run_degrees:
+		notes.append({"freq": _scale_degree_freq(d, 1), "dur": 0.07})
+
+	var total_time = 0.0
+	for n in notes:
+		total_time += n["dur"]
+	total_time += 0.35
+
+	var buf = PackedFloat32Array()
+	buf.resize(int(total_time * AUDIO_MIX_RATE) + AUDIO_MIX_RATE)
+
+	var cursor = 0
+	for n in notes:
+		_mix_tone(buf, cursor, n["freq"], n["dur"], 0.26, "square")
+		cursor += int(n["dur"] * AUDIO_MIX_RATE)
+
+	# 締めの和音（オクターブ違いの2音を同時に鳴らす）
+	_mix_tone(buf, cursor, _degree_freq(1, 2), 0.35, 0.24, "square")
+	_mix_tone(buf, cursor, _degree_freq(3, 2), 0.35, 0.20, "triangle")
+	cursor += int(0.35 * AUDIO_MIX_RATE)
+
+	buf.resize(max(cursor, 1))
+	return _make_wav(buf, false)
+
+
+func _generate_gameover_sfx() -> AudioStreamWAV:
+	# ゲームオーバー音：下降する4音
+	var notes = [
+		{"freq": _degree_freq(5, 1), "dur": 0.14},
+		{"freq": _degree_freq(3, 1), "dur": 0.14},
+		{"freq": _degree_freq(1, 1), "dur": 0.14},
+		{"freq": _degree_freq(5, 0), "dur": 0.22},
+	]
+	return _build_note_sequence(notes, "triangle", 0.26)
+
+
+func _build_note_sequence(notes: Array, waveform: String, volume: float) -> AudioStreamWAV:
+	var total_time = 0.0
+	for n in notes:
+		total_time += n["dur"]
+	total_time += 0.1
+
+	var buf = PackedFloat32Array()
+	buf.resize(int(total_time * AUDIO_MIX_RATE) + AUDIO_MIX_RATE)
+
+	var cursor = 0
+	for n in notes:
+		_mix_tone(buf, cursor, n["freq"], n["dur"], volume, waveform)
+		cursor += int(n["dur"] * AUDIO_MIX_RATE)
+
+	buf.resize(max(cursor, 1))
+	return _make_wav(buf, false)
 
 
 func _draw():
