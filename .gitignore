@@ -25,3 +25,10 @@ Thumbs.db
 # Local development
 *.log
 tmp/
+
+# BGM本体（YouTubeオーディオライブラリ音源）
+# ゲーム内埋め込み（docs/index.pck）としての利用は許諾範囲内だが、
+# 音源データそのものの単体配布・再配布は利用規約で禁止されているため、
+# 実ファイルはローカルのみに置き、gitでは追跡しない。
+# エクスポート時に必要: assets/audio/SOURCE.md を参照して同じファイルを配置すること。
+assets/audio/carmen_toreadors.mp3
